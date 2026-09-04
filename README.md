@@ -316,7 +316,7 @@ Attention : la seconde commande supprime notamment les données persistées par 
 
 Une démonstration du POC est disponible ici :
 
-**[Voir la démonstration vidéo](LIEN_DE_LA_VIDEO)**
+**[Voir la démonstration vidéo](https://youtu.be/pkAgr07dHXo)**
 
 La vidéo présente :
 
