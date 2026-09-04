@@ -1,0 +1,171 @@
+name: indutech-client-tickets
+
+networks:
+  redpanda_network:
+    driver: bridge
+
+
+volumes:
+  redpanda-data:
+  spark-checkpoints:
+  spark-ivy:
+
+
+services:
+
+  redpanda-0:
+    build:
+      context: .
+      dockerfile: docker/redpanda/Dockerfile
+
+    container_name: redpanda-0
+
+    command:
+      - redpanda
+      - start
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda-0:9092,external://localhost:19092
+      - --pandaproxy-addr
+      - internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr
+      - internal://redpanda-0:8082,external://localhost:18082
+      - --schema-registry-addr
+      - internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr
+      - redpanda-0:33145
+      - --advertise-rpc-addr
+      - redpanda-0:33145
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+
+    networks:
+      - redpanda_network
+
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+    ports:
+      - "18081:18081"
+      - "18082:18082"
+      - "19092:19092"
+      - "19644:9644"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "rpk cluster info --brokers localhost:9092 > /dev/null 2>&1 || exit 1"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  redpanda-init:
+    build:
+      context: .
+      dockerfile: docker/redpanda/Dockerfile
+
+    networks:
+      - redpanda_network
+
+    depends_on:
+      redpanda-0:
+        condition: service_healthy
+
+    entrypoint: ["/bin/sh", "-c"]
+
+    command: >
+      rpk topic create client_tickets
+      --partitions 3
+      --brokers redpanda-0:9092
+      || true
+
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v3.9.0
+
+    container_name: redpanda-console
+
+    networks:
+      - redpanda_network
+
+    entrypoint: /bin/sh
+
+    command: >
+      -c 'echo "$$CONSOLE_CONFIG_FILE" > /tmp/config.yml;
+      /app/console'
+
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+
+      CONSOLE_CONFIG_FILE: |
+        kafka:
+          brokers: ["redpanda-0:9092"]
+
+        schemaRegistry:
+          enabled: true
+          urls: ["http://redpanda-0:8081"]
+
+        redpanda:
+          adminApi:
+            enabled: true
+            urls: ["http://redpanda-0:9644"]
+
+    ports:
+      - "8080:8080"
+
+    depends_on:
+      redpanda-0:
+        condition: service_healthy
+
+
+  producer:
+    build:
+      context: .
+      dockerfile: docker/producer/Dockerfile
+
+    container_name: ticket-producer
+
+    networks:
+      - redpanda_network
+
+    environment:
+      REDPANDA_BOOTSTRAP_SERVERS: redpanda-0:9092
+
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+
+    restart: unless-stopped
+
+
+  spark-streaming:
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+
+    container_name: spark-streaming
+
+    networks:
+      - redpanda_network
+
+    environment:
+      REDPANDA_BOOTSTRAP_SERVERS: redpanda-0:9092
+      SPARK_EXPORT_PATH: /opt/spark/exports/tickets_by_type
+      SPARK_CHECKPOINT_PATH: /opt/spark/checkpoints/tickets_by_type_export
+
+    volumes:
+      - ./exports:/opt/spark/exports
+      - spark-checkpoints:/opt/spark/checkpoints
+      - spark-ivy:/tmp/spark-ivy
+
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+
+    restart: unless-stopped

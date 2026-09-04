@@ -1,0 +1,8 @@
+.venv/
+.spark-checkpoints/
+exports/
+docs/
+.git/
+__pycache__/
+*.pyc
+*.zip

@@ -1,0 +1,11 @@
+[project]
+name = "9-modelisez-une-infrastructure-dans-le-cloud"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "confluent-kafka>=2.15.0",
+    "faker>=40.37.0",
+    "pyspark==3.5.6",
+]
